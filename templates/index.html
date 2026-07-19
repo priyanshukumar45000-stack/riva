@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Trip Planner</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<header class="app-header">
+    <h1>🧳 AI Trip Planner</h1>
+    <p class="tagline">BOARDING PASS TO YOUR NEXT TRIP &mdash; ITINERARY &middot; WEATHER &middot; BUDGET &middot; BOOKING</p>
+</header>
+
+<div id="apiKeyWarning" class="alert-box hidden">
+    <strong>No Groq API key found.</strong>
+    <ol>
+        <li>Get a free key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> (no credit card required)</li>
+        <li>Create a file named <code>.env</code> in the project root with:<br><code>GROQ_API_KEY=gsk_your-key-here</code></li>
+        <li>Restart the Flask server.</li>
+    </ol>
+</div>
+
+<div class="layout">
+    <aside class="sidebar">
+        <h2>Trip Details</h2>
+        <form id="tripForm">
+            <label for="origin">Departing from</label>
+            <input type="text" id="origin" placeholder="e.g. Delhi">
+
+            <label for="destination">Destination *</label>
+            <input type="text" id="destination" placeholder="e.g. Kyoto, Japan" required>
+
+            <div class="field-row">
+                <div>
+                    <label for="startDate">Start date *</label>
+                    <input type="date" id="startDate" required>
+                </div>
+                <div>
+                    <label for="endDate">End date *</label>
+                    <input type="date" id="endDate" required>
+                </div>
+            </div>
+
+            <label for="travelers">Travelers</label>
+            <input type="number" id="travelers" min="1" max="20" value="2">
+
+            <label for="budgetTier">Budget tier</label>
+            <select id="budgetTier">
+                <option value="budget">Budget</option>
+                <option value="mid-range" selected>Mid-range</option>
+                <option value="luxury">Luxury</option>
+            </select>
+
+            <label>Interests</label>
+            <div class="chip-group" id="interestChips">
+                <button type="button" class="chip selected" data-value="history &amp; culture">History &amp; culture</button>
+                <button type="button" class="chip selected" data-value="food &amp; dining">Food &amp; dining</button>
+                <button type="button" class="chip" data-value="nature &amp; outdoors">Nature &amp; outdoors</button>
+                <button type="button" class="chip" data-value="nightlife">Nightlife</button>
+                <button type="button" class="chip" data-value="art &amp; museums">Art &amp; museums</button>
+                <button type="button" class="chip" data-value="shopping">Shopping</button>
+                <button type="button" class="chip" data-value="relaxation &amp; wellness">Relaxation &amp; wellness</button>
+                <button type="button" class="chip" data-value="adventure sports">Adventure sports</button>
+                <button type="button" class="chip" data-value="architecture">Architecture</button>
+                <button type="button" class="chip" data-value="local markets">Local markets</button>
+                <button type="button" class="chip" data-value="photography">Photography</button>
+                <button type="button" class="chip" data-value="family-friendly">Family-friendly</button>
+            </div>
+
+            <label for="pace">Pace</label>
+            <select id="pace">
+                <option value="relaxed">Relaxed</option>
+                <option value="balanced" selected>Balanced</option>
+                <option value="packed">Packed</option>
+            </select>
+
+            <label for="model">AI model</label>
+            <select id="model">
+                {% for m in models %}
+                <option value="{{ m }}" {% if m == default_model %}selected{% endif %}>{{ m }}</option>
+                {% endfor %}
+            </select>
+
+            <button type="submit" class="btn-primary" id="generateBtn">✨ Generate itinerary</button>
+        </form>
+        <p id="formError" class="form-error hidden"></p>
+    </aside>
+
+    <main class="content">
+        <div id="placeholder" class="placeholder">
+            Fill in your trip details in the sidebar and click <strong>Generate itinerary</strong> to get started.
+        </div>
+
+        <div id="loading" class="loading hidden">
+            <div class="spinner"></div>
+            <p id="loadingText">Planning your trip...</p>
+        </div>
+
+        <div id="results" class="hidden">
+            <h2 id="resultsTitle"></h2>
+            <div id="destinationSummary" class="summary-postcard"></div>
+
+            <nav class="tabs">
+                <button class="tab-btn active" data-tab="itinerary">📅 Itinerary</button>
+                <button class="tab-btn" data-tab="weather">🌦️ Weather</button>
+                <button class="tab-btn" data-tab="budget">💰 Budget</button>
+                <button class="tab-btn" data-tab="booking">🔗 Booking links</button>
+            </nav>
+
+            <section id="tab-itinerary" class="tab-panel active">
+                <div id="dayList"></div>
+                <div class="tips-row">
+                    <div id="packingTips" class="tips-col"></div>
+                    <div id="localTips" class="tips-col"></div>
+                </div>
+            </section>
+
+            <section id="tab-weather" class="tab-panel">
+                <div id="weatherGrid" class="weather-grid"></div>
+                <p id="weatherEmpty" class="hidden">Weather data unavailable right now.</p>
+            </section>
+
+            <section id="tab-budget" class="tab-panel">
+                <div class="metric-box">
+                    <span class="metric-label">Estimated total (group)</span>
+                    <span class="metric-value" id="budgetTotal"></span>
+                </div>
+                <table id="budgetTable"></table>
+                <p class="fine-print">Estimate based on typical per-day costs for the selected budget tier. Actual prices vary by destination and season.</p>
+            </section>
+
+            <section id="tab-booking" class="tab-panel">
+                <p>Jump straight to a pre-filled search on these sites:</p>
+                <div id="bookingLinks" class="booking-links"></div>
+            </section>
+        </div>
+    </main>
+</div>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
